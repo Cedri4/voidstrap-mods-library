@@ -62,6 +62,28 @@ const mods = new Set();
 
 const moderation = await readJsonAt('moderation.json', 'moderation');
 if (moderation && Array.isArray(moderation.banned) && moderation.banned.some(b => b.id === authorId)) reasons.push('this account is banned from publishing to the library');
+const MIN_ACCOUNT_DAYS = 14;
+const maintainerLogin = (process.env.MAINTAINER_LOGIN ?? '').toLowerCase();
+const skeleton = text => text.toLowerCase().replace(/[il1|]/g, 'l').replace(/[o0]/g, 'o').replace(/[s5]/g, 's').replace(/[e3]/g, 'e').replace(/[a4@]/g, 'a').replace(/rn/g, 'm').replace(/vv/g, 'w').replace(/[-_.]/g, '');
+if (!isMaintainer) {
+  const account = await gh('GET', `/user/${authorId}`);
+  const ageDays = account?.created_at ? (Date.now() - Date.parse(account.created_at)) / 86400000 : 0;
+  if (ageDays < MIN_ACCOUNT_DAYS) reasons.push(`GitHub accounts must be at least ${MIN_ACCOUNT_DAYS} days old to publish, this one is ${Math.floor(ageDays)} days old`);
+  if (maintainerLogin && skeleton(authorLogin) === skeleton(maintainerLogin)) reasons.push(`@${authorLogin} looks like the maintainer's account @${process.env.MAINTAINER_LOGIN} but is a different account`);
+  const commits = [];
+  for (let page = 1; page <= 3; page++) {
+    const batch = await gh('GET', `/repos/${repo}/pulls/${pr.number}/commits?per_page=100&page=${page}`);
+    commits.push(...batch);
+    if (batch.length < 100) break;
+  }
+  const foreign = commits.filter(c => c.author?.id !== authorId && c.committer?.id !== authorId);
+  if (foreign.length) reasons.push(`${foreign.length} commit(s) in this pull request were not made by @${authorLogin}, every commit must come from the account that opens the pull request`);
+}
+for (const file of files) {
+  if (!file.filename.endsWith('/owner.json') || file.status === 'removed') continue;
+  const claimed = await readJsonAt(file.filename, headRef);
+  if (claimed && claimed.id === maintainerId && authorId !== maintainerId) reasons.push(`\`${file.filename}\` claims to belong to the maintainer, but this pull request comes from @${authorLogin} (${authorId})`);
+}
 if (pr.user.type !== 'User') reasons.push(`pull requests must come from a personal GitHub account, not a ${pr.user.type}`);
 
 for (const file of files) {

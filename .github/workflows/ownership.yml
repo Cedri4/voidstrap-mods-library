@@ -29,4 +29,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           MAINTAINER_ID: "195697851"
+          MAINTAINER_LOGIN: KloBraticc
         run: node scripts/gate.mjs
