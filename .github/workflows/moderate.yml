@@ -25,12 +25,11 @@ permissions:
   issues: write
   pull-requests: write
 
-concurrency:
-  group: moderation
-  cancel-in-progress: false
-
 jobs:
   moderate:
+    concurrency:
+      group: moderation-${{ github.run_id }}
+      cancel-in-progress: false
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.comment.user.id == 195697851 && startsWith(github.event.comment.body, '/'))
@@ -91,7 +90,16 @@ jobs:
           cd "$work"
           git add moderation.json
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "chore: ${MOD_ACTION} ${MOD_TARGET}"
-          git push -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:moderation
+          for attempt in 1 2 3 4 5; do
+            if git push -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:moderation; then exit 0; fi
+            sleep $((attempt * 3))
+            git fetch -q "$url" moderation
+            git reset -q --hard FETCH_HEAD
+            node "$GITHUB_WORKSPACE/scripts/moderate.mjs" "$work/moderation.json"
+            git add moderation.json
+            git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "chore: ${MOD_ACTION} ${MOD_TARGET}" || exit 0
+          done
+          exit 1
       - name: Rebuild the index
         if: steps.command.outputs.skip != 'true'
         env:
