@@ -203,12 +203,12 @@ if (mod && !removing) {
   const addedHosts = baseHosts ? hosts.filter(h => !baseHosts.includes(h)) : [];
   add(unknownHosts.length === 0, 'Only contacts approved websites', unknownHosts.length ? `asks for ${unknownHosts.join(', ')}, the maintainer has to look` : '');
   add(addedHosts.length === 0, 'An update does not add new websites', addedHosts.length ? `adds ${addedHosts.join(', ')}, the maintainer has to look` : '');
+  flags = scanForReview(modFiles).concat(scanForReview(notes.map((n, i) => ({ path: `comment by @${n.who} #${i + 1}`, text: n.text }))));
+  const aiReady = requirements.every(r => r.ok) && flags.length === 0 && !pr.draft;
   const usesAccount = Array.isArray(manifest.permissions) && manifest.permissions.includes('roblox-account');
   add(!usesAccount, 'Does not ask for the Roblox account', usesAccount ? 'mods that use the Roblox account are always reviewed by the maintainer' : '');
-  flags = scanForReview(modFiles).concat(scanForReview(notes.map((n, i) => ({ path: `comment by @${n.who} #${i + 1}`, text: n.text }))));
   add(flags.length === 0, 'Nothing flagged for a manual look', flags.slice(0, 8).join('<br>'));
-  const allPreviousOk = requirements.every(r => r.ok);
-  if (allPreviousOk) ai = await aiReview(mod, manifest, modFiles, notes);
+  if (aiReady) ai = await aiReview(mod, manifest, modFiles, notes);
   else ai = { verdict: 'unsure', summary: 'The AI review runs after every other requirement is met.', risks: [], suggestions: [], reply: '' };
   add(ai.verdict === 'safe', 'AI security review found nothing unsafe', ai.verdict === 'safe' ? '' : `verdict: ${ai.verdict}`);
 } else if (removing) {
