@@ -90,15 +90,21 @@ async function aiReview(mod, manifest, files) {
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json' },
     body: JSON.stringify({ model, temperature: 0, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] })
   });
-  if (!res.ok) return { verdict: 'unsure', summary: `The AI review could not run (${res.status}).`, risks: [] };
+  const raw = await res.text();
+  if (!res.ok) {
+    console.log(`AI review request failed: ${res.status} ${raw.slice(0, 300)}`);
+    return { verdict: 'unsure', summary: `The AI review could not run (${res.status}).`, risks: [] };
+  }
   try {
-    const data = await res.json();
-    const parsed = JSON.parse(data.choices?.[0]?.message?.content ?? '{}');
+    const data = JSON.parse(raw);
+    const content = String(data.choices?.[0]?.message?.content ?? '').trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+    const parsed = JSON.parse(content.slice(content.indexOf('{'), content.lastIndexOf('}') + 1));
     const verdict = ['safe', 'unsafe', 'unsure'].includes(parsed.verdict) ? parsed.verdict : 'unsure';
     const summary = String(parsed.summary ?? '').slice(0, 600);
     const risks = Array.isArray(parsed.risks) ? parsed.risks.slice(0, 10).map(r => String(r).slice(0, 200)) : [];
     return { verdict, summary, risks };
-  } catch {
+  } catch (e) {
+    console.log(`AI review answer could not be read: ${res.headers.get('content-type')} ${raw.slice(0, 300)}`);
     return { verdict: 'unsure', summary: 'The AI review returned an answer that could not be read.', risks: [] };
   }
 }
