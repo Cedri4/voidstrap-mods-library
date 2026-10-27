@@ -6,7 +6,9 @@ const token = process.env.GITHUB_TOKEN;
 const repo = process.env.GITHUB_REPOSITORY;
 const maintainerId = Number(process.env.MAINTAINER_ID);
 const maintainerLogin = process.env.MAINTAINER_LOGIN;
-const model = process.env.REVIEW_MODEL ?? 'openai/gpt-4.1';
+const model = process.env.AI_REVIEW_MODEL || 'gpt-4.1';
+const aiUrl = process.env.AI_REVIEW_URL || 'https://api.openai.com/v1/chat/completions';
+const aiKey = process.env.AI_REVIEW_KEY ?? '';
 const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
 const run = event.workflow_run;
 const moderation = process.env.MODERATION_FILE && fs.existsSync(process.env.MODERATION_FILE) ? { ...EMPTY_MODERATION, ...JSON.parse(fs.readFileSync(process.env.MODERATION_FILE, 'utf8')) } : EMPTY_MODERATION;
@@ -85,9 +87,11 @@ async function aiReview(mod, manifest, files) {
     'Answer with JSON only: {"verdict":"safe"|"unsafe"|"unsure","summary":"one or two sentences","risks":["short item", ...]}.'
   ].join('\n');
   const user = `Mod name: ${mod}\nDescription: ${JSON.stringify(manifest.description ?? '')}\nDeclared network hosts: ${JSON.stringify(manifest.network ?? [])}\n\n${material}`;
-  const res = await fetch('https://models.github.ai/inference/chat/completions', {
+  if (!aiKey) return { verdict: 'unsure', summary: 'The AI review is not set up yet (no AI_REVIEW_KEY secret), so the maintainer reviews this pull request.', risks: [] };
+  if (!/^https:\/\//.test(aiUrl)) return { verdict: 'unsure', summary: 'The AI review address is not https.', risks: [] };
+  const res = await fetch(aiUrl, {
     method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json' },
+    headers: { authorization: `Bearer ${aiKey}`, 'api-key': aiKey, 'content-type': 'application/json', accept: 'application/json' },
     body: JSON.stringify({ model, temperature: 0, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] })
   });
   const raw = await res.text();
@@ -167,7 +171,7 @@ const lines = [
   ''
 ];
 if (mod && !removing) {
-  lines.push(`**AI review (${model} through GitHub Models):** ${ai.verdict}. ${ai.summary}`);
+  lines.push(`**AI review (${model}):** ${ai.verdict}. ${ai.summary}`);
   if (ai.risks.length) lines.push('', ...ai.risks.map(r => `- ${r}`));
   lines.push('');
 }

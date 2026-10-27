@@ -11,7 +11,6 @@ permissions:
   issues: write
   actions: write
   checks: read
-  models: read
 
 concurrency:
   group: review-${{ github.event.workflow_run.head_sha }}
@@ -39,4 +38,7 @@ jobs:
           MAINTAINER_ID: "195697851"
           MAINTAINER_LOGIN: KloBraticc
           MODERATION_FILE: ${{ runner.temp }}/moderation.json
+          AI_REVIEW_KEY: ${{ secrets.AI_REVIEW_KEY }}
+          AI_REVIEW_URL: ${{ vars.AI_REVIEW_URL }}
+          AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL }}
         run: node scripts/review.mjs
