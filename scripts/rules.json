@@ -101,6 +101,36 @@
       "pattern": "\\b(crypto ?miner|coinhive|xmrig|monero)\\b",
       "reason": "crypto miners are banned",
       "level": "error"
+    },
+    {
+      "pattern": "\\b(pornhub|xvideos|xnxx|xhamster|redtube|youporn|spankbang|eporner|brazzers|onlyfans|fansly|chaturbate|stripchat|cam4|bongacams|livejasmin|rule34|r34|e621|gelbooru|danbooru|sankakucomplex|nhentai|hanime|hentaihaven|f95zone|literotica|motherless|heavy-r|efukt)\\b",
+      "reason": "adult, pornographic and NSFW websites or services are banned",
+      "level": "error"
+    },
+    {
+      "pattern": "\\b(porn|porno|pornography|pornographic|hentai|nsfw|xxx|eroge|ecchi|lewd|ahegao|futanari|loli|lolicon|shota|shotacon|paizuri|bukkake|gangbang|creampie|blowjob|handjob|footjob|titjob|deepthroat|dildo|vibrator|fleshlight|bdsm|bondage|femdom|maledom|sadomasochism|cuckold|milf|dilf|gilf|camgirl|camwhore|prostitute|prostitution|brothel|stripper|lapdance|striptease|orgasm|masturbat(e|ing|ion)|ejaculat(e|ing|ion)|cumshot|cumslut|cocksucker|motherfucker|buttplug|redgifs|booru)\\b",
+      "reason": "pornographic, sexually explicit and NSFW content is banned",
+      "level": "error"
+    },
+    {
+      "pattern": "\\b(nudes|nudity|topless|bottomless|panties|lingerie|upskirt|downblouse|cameltoe|nipple|nipples|areola|boobs|titties|tits|clitoris|vagina|vulva|labia|penis|phallus|scrotum|testicle|testicles|erection|boner|foreskin|anus|butthole|asshole|condom|viagra|cialis|horny|slut|sluts|slutty|whore|whores|skank|prostitute|hooker|fetish|kink|erotic|erotica|sex ?tape|sex ?toy|sex ?cam|cyber ?sex|phone ?sex|anal ?sex|oral ?sex)\\b",
+      "reason": "sexually explicit or NSFW terms are banned",
+      "level": "error"
+    },
+    {
+      "pattern": "\\b(nigger|niggers|nigga|niggas|faggot|faggots|fag|fags|dyke|tranny|trannies|shemale|retard|retards|retarded|kike|kikes|spic|spics|chink|chinks|gook|gooks|wetback|wetbacks|beaner|beaners|coon|coons|raghead|towelhead|camel ?jockey|white ?power|heil ?hitler|sieg ?heil|ku ?klux ?klan|kkk|nazi|nazis|neo-?nazi)\\b",
+      "reason": "hate speech and slurs are banned",
+      "level": "error"
+    },
+    {
+      "pattern": "\\b(fuck|fucking|fucked|fucker|fuckers|motherfucker|motherfucking|shit|shitty|bullshit|horseshit|dipshit|dogshit|batshit|bitch|bitches|bitching|son ?of ?a ?bitch|bastard|bastards|cunt|cunts|twat|twats|prick|pricks|dickhead|dickheads|cock|cocks|pussy|pussies|wanker|wankers|arsehole|asshat|jackass|dumbass|fatass|badass|douchebag|scumbag|shithead|fuckface|shitface|piss ?off|fuck ?off)\\b",
+      "reason": "profanity and vulgar language are banned",
+      "level": "error"
+    },
+    {
+      "pattern": "\\b(child ?porn|cp ?links?|csam|pedophile|pedophilia|pedo|rape|rapist|raping|molest|molester|molestation|incest|bestiality|zoophilia|necrophilia|snuff ?film|gore ?site|liveleak|bestgore|kill ?yourself|kys|suicide ?method|self ?harm|doxx|doxxing|swatting)\\b",
+      "reason": "severe abuse, violence, self-harm and illegal content are banned",
+      "level": "error"
     }
   ]
 }

@@ -41,6 +41,9 @@ function checkText(mod, file, isCode) {
 function checkMod(mod) {
   const dir = path.join(MODS, mod);
   if (!NAME_PATTERN.test(mod)) return fail(mod, 'the folder name must be lowercase letters, digits and hyphens');
+  for (const rule of blocked) {
+    if (rule.level !== 'review' && rule.regex.test(mod.replace(/-/g, ' '))) fail(mod, `mod name violates rule: ${rule.reason}`);
+  }
   const files = walk(dir);
   if (files.length > L.maxFiles) fail(mod, `has ${files.length} files, the limit is ${L.maxFiles}`);
   const total = files.reduce((n, f) => n + f.size, 0);
@@ -51,6 +54,9 @@ function checkMod(mod) {
     if (parts.length > L.maxPathDepth) fail(mod, `${file.rel} is nested too deeply`);
     if (parts.some(p => !/^[A-Za-z0-9._-]+$/.test(p) || p === '..')) fail(mod, `${file.rel} has an unsafe file name`);
     if (parts.some((p, i) => p.startsWith('.') && !(i === 0 && p === '.voidstrap-mod'))) fail(mod, `${file.rel} is a hidden file`);
+    for (const rule of blocked) {
+      if (rule.level !== 'review' && rule.regex.test(file.rel.replace(/[/_.-]/g, ' '))) fail(mod, `${file.rel} file name violates rule: ${rule.reason}`);
+    }
     if (file.rel.startsWith('.voidstrap-mod/') && file.rel !== '.voidstrap-mod/plugin.json') fail(mod, `${file.rel} must not be published, only plugin.json belongs in .voidstrap-mod`);
     if (file.rel.startsWith('node_modules/')) fail(mod, 'node_modules must not be published');
     const ext = path.extname(file.rel).toLowerCase();
