@@ -136,23 +136,14 @@ async function aiReview(mod, manifest, files, notes) {
   }
 }
 
-async function postSuggestions(pr, mod, files, suggestions, allowInline) {
+async function postSuggestions(pr, mod, files, suggestions) {
   if (!mod || suggestions.length === 0) return;
   const reviews = await gh('GET', `/repos/${repo}/pulls/${pr.number}/reviews?per_page=100`);
   const tag = `<!-- voidstrap-suggestions ${pr.head.sha} -->`;
   if (reviews.some(r => (r.body ?? '').includes(tag))) return;
-  const changed = new Set((await gh('GET', `/repos/${repo}/pulls/${pr.number}/files?per_page=100`)).map(f => f.filename));
-  const inline = [];
-  const general = [];
-  for (const x of suggestions) {
-    const file = files.find(f => f.path === x.path);
-    const full = `mods/${mod}/${x.path}`;
-    const lineCount = file?.text?.split(/\r?\n/).length ?? 0;
-    if (allowInline && file && changed.has(full) && Number.isInteger(x.line) && x.line >= 1 && x.line <= lineCount) inline.push({ path: full, line: x.line, side: 'RIGHT', body: x.comment });
-    else general.push(`- \`${x.path}${Number.isInteger(x.line) ? ':' + x.line : ''}\` ${x.comment}`);
-  }
+  const general = suggestions.map(x => `- \`${x.path}${Number.isInteger(x.line) ? ':' + x.line : ''}\` ${x.comment}`);
   const body = [tag, '**Suggestions from the AI review.** These are optional and do not block the merge.', ...general].join('\n');
-  await gh('POST', `/repos/${repo}/pulls/${pr.number}/reviews`, { commit_id: pr.head.sha, event: 'COMMENT', body, comments: inline }).catch(e => console.log(`Could not post suggestions: ${e.message}`));
+  await gh('POST', `/repos/${repo}/pulls/${pr.number}/reviews`, { commit_id: pr.head.sha, event: 'COMMENT', body }).catch(e => console.log(`Could not post suggestions: ${e.message}`));
 }
 
 const pr = await findPullRequest();
@@ -238,7 +229,7 @@ lines.push(ready
   : `Not merged automatically. Fix the items marked ❌ and push again, or wait for @${maintainerLogin} to review it.`);
 lines.push('', '<sub>The AI review is an extra safety net, not a guarantee. Automated checks, ownership rules and the maintainer’s takedown power still apply.</sub>');
 await upsertComment(pr, lines.join('\n'));
-await postSuggestions(pr, mod, modFiles, ai.suggestions ?? [], !ready);
+await postSuggestions(pr, mod, modFiles, ai.suggestions ?? []);
 
 if (!ready) {
   if (!labels.includes('needs-review')) await gh('POST', `/repos/${repo}/issues/${pr.number}/labels`, { labels: ['needs-review'] });
