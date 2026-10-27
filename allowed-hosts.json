@@ -1,0 +1,10 @@
+{
+  "hosts": [
+    "games.roblox.com",
+    "thumbnails.roblox.com",
+    "users.roblox.com",
+    "apis.roblox.com",
+    "api.github.com",
+    "raw.githubusercontent.com"
+  ]
+}

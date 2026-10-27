@@ -1,0 +1,11 @@
+{
+  "name": "example-hello",
+  "version": "1.0.0",
+  "description": "A tiny example that adds a Hello page to the Voidstrap sidebar with a click counter.",
+  "network": [],
+  "userConfig": {},
+  "library": {
+    "id": "195697851/example-hello",
+    "ownerId": 195697851
+  }
+}

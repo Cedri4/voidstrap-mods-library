@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a malicious mod privately
+    url: https://github.com/KloBraticc/voidstrap-mods-library/security/advisories/new
+    about: Use this for mods that steal data, cheat or hide what they do.

@@ -1,0 +1,12 @@
+{
+  "name": "voidstrap-mods-library",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "validate": "node scripts/validate.mjs",
+    "index": "node scripts/build-index.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3"
+  }
+}
