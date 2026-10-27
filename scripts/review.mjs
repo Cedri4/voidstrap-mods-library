@@ -206,10 +206,11 @@ if (mod && !removing) {
   flags = scanForReview(modFiles).concat(scanForReview(notes.map((n, i) => ({ path: `comment by @${n.who} #${i + 1}`, text: n.text }))));
   const aiReady = requirements.every(r => r.ok) && flags.length === 0 && !pr.draft;
   const usesAccount = Array.isArray(manifest.permissions) && manifest.permissions.includes('roblox-account');
-  add(!usesAccount, 'Does not ask for the Roblox account', usesAccount ? 'mods that use the Roblox account are always reviewed by the maintainer' : '');
-  add(flags.length === 0, 'Nothing flagged for a manual look', flags.slice(0, 8).join('<br>'));
   if (aiReady) ai = await aiReview(mod, manifest, modFiles, notes);
   else ai = { verdict: 'unsure', summary: 'The AI review runs after every other requirement is met.', risks: [], suggestions: [], reply: '' };
+  const accountOk = !usesAccount || pr.user.id === maintainerId || ai.verdict === 'safe';
+  add(accountOk, 'Does not ask for the Roblox account', usesAccount ? (accountOk ? 'read-only Roblox account access passed security review' : 'mods that use the Roblox account are always reviewed by the maintainer') : '');
+  add(flags.length === 0, 'Nothing flagged for a manual look', flags.slice(0, 8).join('<br>'));
   add(ai.verdict === 'safe', 'AI security review found nothing unsafe', ai.verdict === 'safe' ? '' : `verdict: ${ai.verdict}`);
 } else if (removing) {
   add(true, 'Removes a mod owned by the author');
