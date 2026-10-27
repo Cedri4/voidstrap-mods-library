@@ -128,6 +128,7 @@ for (const mod of mods) {
   const hosts = Array.isArray(headManifest.network) ? headManifest.network : [];
   const oldHosts = Array.isArray(baseManifest?.network) ? baseManifest.network : [];
   if (hosts.length) labels.add('network');
+  if (Array.isArray(headManifest.permissions) && headManifest.permissions.includes('roblox-account')) { labels.add('roblox-account'); labels.add('needs-review'); }
   if (hosts.some(h => !ALLOWED_HOSTS.includes(h)) || (baseManifest && hosts.some(h => !oldHosts.includes(h)))) labels.add('needs-review');
 }
 

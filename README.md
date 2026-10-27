@@ -101,6 +101,29 @@ Change your mod in Voidstrap and press **Publish** again, or open a new pull req
 - Verified and featured mods are shown above other mods in Voidstrap.
 - Only the maintainer can verify mods, trust authors, feature mods or take mods down. That list lives on the `moderation` branch, which only the maintainer's workflows write to.
 
+## Using the Roblox account
+
+Mods may read things from the user's Roblox account (friends, presence, inventory, groups and more) without ever touching the login cookie:
+
+```json
+"permissions": ["roblox-account"]
+```
+
+```ts
+const r = await $.roblox.request('https://friends.roblox.com/v1/my/friends/count');
+const me = await $.roblox.account();
+```
+
+How it stays safe:
+
+- **The mod never sees the cookie.** Voidstrap attaches the login to the request itself, so there is nothing a mod could send anywhere, whatever its code does.
+- **Roblox only.** Requests may only go over https to Roblox API hosts (users, friends, presence, thumbnails, games, groups, badges, catalog, avatar, inventory, economy, followings, develop). Redirects are never followed.
+- **Read only.** Only GET, plus a few POST lookups (presence, thumbnails, user lookups). Buying, trading, messaging and settings are not possible.
+- **Rate limited.** At most 60 requests a minute per mod.
+- **The user approves it separately.** Voidstrap asks for Roblox account access on its own, also when an update adds the permission.
+- **Always reviewed.** Mods with this permission are labelled `roblox-account` and never merged automatically.
+- Code that mentions `ROBLOSECURITY`, cookies or `document.cookie` is refused outright.
+
 ## Rules
 
 A mod is **removed or refused** if it:

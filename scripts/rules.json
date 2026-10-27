@@ -58,8 +58,8 @@
       "level": "error"
     },
     {
-      "pattern": "ROBLOSECURITY|\\.ROBLOSECURITY|robloxcookie|RobloxCookies\\.dat",
-      "reason": "Roblox login cookies are off limits",
+      "pattern": "ROBLOSECURITY|robloxcookie|RobloxCookies\\.dat|\\bdocument\\.cookie\\b|set-cookie",
+      "reason": "mods never read the Roblox login cookie: add the roblox-account permission and use $.roblox.request, Voidstrap attaches the login itself so it can never leak",
       "level": "error"
     },
     {

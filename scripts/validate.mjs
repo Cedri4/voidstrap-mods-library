@@ -81,6 +81,10 @@ function checkMod(mod) {
     if (!Array.isArray(manifest.tags) || manifest.tags.length > 5) fail(mod, 'plugin.json tags must be a list of up to 5 tags');
     else for (const tag of manifest.tags) if (!TAGS.includes(tag)) fail(mod, `tag ${JSON.stringify(tag)} is not in tags.json`);
   }
+  if (manifest.permissions !== undefined) {
+    if (!Array.isArray(manifest.permissions) || manifest.permissions.some(p => p !== 'roblox-account')) fail(mod, 'plugin.json permissions may only contain "roblox-account"');
+    else if (manifest.permissions.length) review(mod, 'asks to use the Roblox account through $.roblox.request, the maintainer must review it');
+  }
   if (manifest.library !== undefined) {
     const lib = manifest.library;
     if (typeof lib !== 'object' || lib.ownerId !== owner.id || lib.id !== `${owner.id}/${mod}`) fail(mod, 'plugin.json library must be { id: "<ownerId>/<name>", ownerId } and match owner.json');
