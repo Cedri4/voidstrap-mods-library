@@ -211,6 +211,7 @@ if (mod && !removing) {
   add(true, 'Removes a mod owned by the author');
 }
 
+add(!pr.draft, 'Marked ready for review, not a draft', pr.draft ? 'press Ready for review when you are done' : '');
 const ready = requirements.every(r => r.ok);
 const lines = [
   MARKER,
