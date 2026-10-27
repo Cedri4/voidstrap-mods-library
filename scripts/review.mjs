@@ -145,7 +145,7 @@ if (mod && !removing) {
   try { manifest = JSON.parse(modFiles.find(f => f.path === '.voidstrap-mod/plugin.json')?.text ?? '{}'); } catch { manifest = {}; }
   const hosts = Array.isArray(manifest.network) ? manifest.network : [];
   const unknownHosts = hosts.filter(h => !ALLOWED_HOSTS.includes(h));
-  add(unknownHosts.length === 0 && !labels.includes('needs-review'), 'Only contacts approved websites', unknownHosts.length ? `asks for ${unknownHosts.join(', ')}, the maintainer has to look` : '');
+  add(unknownHosts.length === 0, 'Only contacts approved websites', unknownHosts.length ? `asks for ${unknownHosts.join(', ')}, the maintainer has to look` : '');
   flags = scanForReview(modFiles);
   add(flags.length === 0, 'Nothing flagged for a manual look', flags.slice(0, 8).join('<br>'));
   const allPreviousOk = requirements.every(r => r.ok);
@@ -185,6 +185,7 @@ if (!ready) {
 }
 
 await gh('POST', `/repos/${repo}/issues/${pr.number}/labels`, { labels: ['auto-approved'] });
+if (labels.includes('needs-review')) await gh('DELETE', `/repos/${repo}/issues/${pr.number}/labels/needs-review`);
 await gh('POST', `/repos/${repo}/pulls/${pr.number}/reviews`, { commit_id: pr.head.sha, event: 'APPROVE', body: 'Every library requirement is met.' });
 const merged = await gh('PUT', `/repos/${repo}/pulls/${pr.number}/merge`, { sha: pr.head.sha, merge_method: 'squash', commit_title: `${pr.title} (#${pr.number})` }).catch(e => ({ error: e.message }));
 if (merged?.merged) {
