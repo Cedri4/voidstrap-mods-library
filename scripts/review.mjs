@@ -149,7 +149,12 @@ if (mod && !removing) {
   try { manifest = JSON.parse(modFiles.find(f => f.path === '.voidstrap-mod/plugin.json')?.text ?? '{}'); } catch { manifest = {}; }
   const hosts = Array.isArray(manifest.network) ? manifest.network : [];
   const unknownHosts = hosts.filter(h => !ALLOWED_HOSTS.includes(h));
+  const baseFile = await gh('GET', `/repos/${repo}/contents/mods/${mod}/.voidstrap-mod/plugin.json?ref=${pr.base.sha}`);
+  let baseHosts = null;
+  try { baseHosts = baseFile ? JSON.parse(Buffer.from(baseFile.content, 'base64').toString('utf8')).network ?? [] : null; } catch { baseHosts = []; }
+  const addedHosts = baseHosts ? hosts.filter(h => !baseHosts.includes(h)) : [];
   add(unknownHosts.length === 0, 'Only contacts approved websites', unknownHosts.length ? `asks for ${unknownHosts.join(', ')}, the maintainer has to look` : '');
+  add(addedHosts.length === 0, 'An update does not add new websites', addedHosts.length ? `adds ${addedHosts.join(', ')}, the maintainer has to look` : '');
   flags = scanForReview(modFiles);
   add(flags.length === 0, 'Nothing flagged for a manual look', flags.slice(0, 8).join('<br>'));
   const allPreviousOk = requirements.every(r => r.ok);
