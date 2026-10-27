@@ -4,6 +4,8 @@ on:
   workflow_run:
     workflows: [Validate]
     types: [completed]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
@@ -13,12 +15,14 @@ permissions:
   checks: read
 
 concurrency:
-  group: review-${{ github.event.workflow_run.head_sha }}
+  group: review-${{ github.event.workflow_run.head_sha || github.event.issue.number }}
   cancel-in-progress: true
 
 jobs:
   review:
-    if: github.event.workflow_run.event == 'pull_request'
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request') ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.type != 'Bot' && !startsWith(github.event.comment.body, '/'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

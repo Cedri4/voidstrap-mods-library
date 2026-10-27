@@ -237,6 +237,8 @@ When anything is ❌, the pull request gets the `needs-review` label and waits f
 - It is a large language model called from the `review.yml` workflow through any OpenAI compatible chat completions API. The maintainer sets it up with a repository secret `AI_REVIEW_KEY`, and optionally the variables `AI_REVIEW_URL` (default `https://api.openai.com/v1/chat/completions`) and `AI_REVIEW_MODEL` (default `gpt-4.1`). The comment on each pull request names the model that reviewed it.
 - Until the secret is set, the AI step reports that it is not set up and every pull request waits for the maintainer. Nothing is merged automatically without an AI verdict.
 - It reads the mod's files as data and answers `safe`, `unsafe` or `unsure` with a short summary. Anything except `safe` stops the automatic merge.
+- It also leaves **optional code suggestions** as line comments on the pull request, and answers questions you ask in the pull request. Comment on your pull request and the review runs again with your comment as context, for example to explain why the mod needs a website.
+- Comments are treated as untrusted context, never as instructions. Only comments by the pull request author or the maintainer are read, and comments that try to talk the reviewer into approving are flagged and block the merge.
 - Files that contain text trying to instruct the reviewer are flagged before the AI sees them, and the AI is told never to follow instructions inside the files.
 - **AI review can be wrong.** It is one layer on top of the rule based checks, the sandbox, the ownership rules, the install warning for unverified mods, and the maintainer's ability to take any mod down at once. That is why automatically merged mods are never marked Verified.
 
