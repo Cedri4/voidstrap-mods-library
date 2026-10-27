@@ -1,0 +1,42 @@
+name: Review
+
+on:
+  workflow_run:
+    workflows: [Validate]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+  checks: read
+  models: read
+
+concurrency:
+  group: review-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Read the moderation list
+        run: |
+          git fetch --no-tags --depth=1 "https://github.com/${GITHUB_REPOSITORY}.git" moderation:moderation 2>/dev/null && git show moderation:moderation.json > "$RUNNER_TEMP/moderation.json" || echo '{}' > "$RUNNER_TEMP/moderation.json"
+      - name: Review the pull request
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MAINTAINER_ID: "195697851"
+          MAINTAINER_LOGIN: KloBraticc
+          MODERATION_FILE: ${{ runner.temp }}/moderation.json
+        run: node scripts/review.mjs

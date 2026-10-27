@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { ROOT, MODS, RULES, ALLOWED_HOSTS, NAME_PATTERN, SEMVER, HOST_PATTERN, listMods, walk, readJson } from './lib.mjs';
+import { ROOT, MODS, RULES, ALLOWED_HOSTS, NAME_PATTERN, SEMVER, HOST_PATTERN, TAGS, listMods, walk, readJson } from './lib.mjs';
 
 const errors = [];
 const reviews = [];
@@ -76,6 +76,10 @@ function checkMod(mod) {
   else for (const host of hosts) {
     if (typeof host !== 'string' || !HOST_PATTERN.test(host)) fail(mod, `network host ${JSON.stringify(host)} is not a plain host name`);
     else if (!ALLOWED_HOSTS.includes(host)) review(mod, `asks for network access to ${host}, which is not on allowed-hosts.json`);
+  }
+  if (manifest.tags !== undefined) {
+    if (!Array.isArray(manifest.tags) || manifest.tags.length > 5) fail(mod, 'plugin.json tags must be a list of up to 5 tags');
+    else for (const tag of manifest.tags) if (!TAGS.includes(tag)) fail(mod, `tag ${JSON.stringify(tag)} is not in tags.json`);
   }
   if (manifest.library !== undefined) {
     const lib = manifest.library;

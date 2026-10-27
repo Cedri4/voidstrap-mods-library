@@ -2,6 +2,11 @@
   "name": "example-hello",
   "version": "1.0.0",
   "description": "A tiny example that adds a Hello page to the Voidstrap sidebar with a click counter.",
+  "tags": [
+    "example",
+    "pages",
+    "fun"
+  ],
   "network": [],
   "userConfig": {},
   "library": {

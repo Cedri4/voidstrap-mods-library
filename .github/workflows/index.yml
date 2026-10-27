@@ -19,6 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          ref: main
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
@@ -27,8 +29,13 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Refuse to index mods that fail the checks
         run: node scripts/validate.mjs
+      - name: Read the moderation list
+        run: |
+          git fetch --no-tags --depth=1 "https://github.com/${GITHUB_REPOSITORY}.git" moderation:moderation 2>/dev/null && git show moderation:moderation.json > "$RUNNER_TEMP/moderation.json" || echo '{}' > "$RUNNER_TEMP/moderation.json"
       - name: Build the index
-        run: node scripts/build-index.mjs "$GITHUB_SHA" "$RUNNER_TEMP/index.json"
+        env:
+          MAINTAINER_ID: "195697851"
+        run: node scripts/build-index.mjs "$(git rev-parse HEAD)" "$RUNNER_TEMP/index.json" "$RUNNER_TEMP/moderation.json"
       - name: Publish the index branch
         env:
           TOKEN: ${{ github.token }}
@@ -38,5 +45,5 @@ jobs:
           git init -q -b index
           cp "$RUNNER_TEMP/index.json" index.json
           git add index.json
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "chore: index ${GITHUB_SHA::12}"
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "chore: index $(git -C "$GITHUB_WORKSPACE" rev-parse --short=12 HEAD)"
           git push -q --force "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" index:index

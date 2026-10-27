@@ -6,7 +6,8 @@ Every mod here is:
 
 - **checked automatically** for malware patterns, cheats, hidden code and unsafe files
 - **owned** by the GitHub account that first published it, so nobody else can change it
-- **reviewed by hand** by the maintainer before it reaches anyone
+- **reviewed** by an automated pipeline (rule based checks plus an AI security review), with the maintainer reviewing anything it is not sure about
+- **verified by hand** when the maintainer has personally confirmed it is safe, shown with a Verified badge
 - **verified on install**: Voidstrap checks every downloaded file against a SHA 256 hash before writing it
 
 ---
@@ -19,11 +20,13 @@ Every mod here is:
   - [With an AI tool](#with-an-ai-tool)
   - [By hand on GitHub](#by-hand-on-github)
 - [Updating your mod](#updating-your-mod)
+- [Verified, trusted and unverified mods](#verified-trusted-and-unverified-mods)
 - [Rules](#rules)
 - [How a mod is laid out](#how-a-mod-is-laid-out)
 - [Security model](#security-model)
 - [What the checks look for](#what-the-checks-look-for)
 - [Review process](#review-process)
+- [Tags and search](#tags-and-search)
 - [Reporting a bad mod](#reporting-a-bad-mod)
 - [FAQ](#faq)
 - [For the maintainer](#for-the-maintainer)
@@ -33,11 +36,12 @@ Every mod here is:
 ## Installing mods
 
 1. Open Voidstrap, then **Voidstrap mods**, then the **Library** tab.
-2. Search or scroll, then press **Install** on a mod.
-3. Voidstrap shows who published it and which websites it may contact (if any). Confirm.
-4. Voidstrap asks **Turn on this mod?** the first time it loads. Only turn on mods you trust.
+2. Search, filter by tag, or scroll, then press **Install**.
+3. What happens next depends on the mod's badge (see [below](#verified-trusted-and-unverified-mods)):
+   - **Verified** or **Trusted author**: installs right away and turns on.
+   - **Not verified**: Voidstrap shows a warning with the author and the websites the mod contacts. **Do not install it unless you trust the author.** If you continue, Voidstrap still asks **Turn on this mod?** before it runs.
 
-When the author publishes a new version, the button changes to **Update**.
+When the author publishes a new version, the button changes to **Update**. If the maintainer takes a mod down, Voidstrap tells you and turns it off.
 
 Mods run inside Voidstrap's sandbox. They cannot read your files, your Roblox login, or anything outside the Voidstrap mod API, and they can only reach the websites listed in their manifest.
 
@@ -85,6 +89,18 @@ Change your mod in Voidstrap and press **Publish** again, or open a new pull req
 - raise the `version` in `.voidstrap-mod/plugin.json` (for example `1.0.0` to `1.0.1`)
 - keep `owner.json` unchanged
 
+## Verified, trusted and unverified mods
+
+| Badge | Meaning | Install |
+| --- | --- | --- |
+| **Verified** | The maintainer personally read this exact version and confirmed it is safe. | Instant, no warning |
+| **Trusted author** | Made by an account the maintainer trusts (the maintainer is always trusted). | Instant, no warning |
+| none | Passed the automated review, but nobody has personally confirmed it. | Warning first: do not install unless you trust the author |
+
+- Verification is tied to the **exact files** of a version (a SHA 256 fingerprint of every file). When the author publishes an update, the badge disappears until the maintainer verifies the new version.
+- Verified and featured mods are shown above other mods in Voidstrap.
+- Only the maintainer can verify mods, trust authors, feature mods or take mods down. That list lives on the `moderation` branch, which only the maintainer's workflows write to.
+
 ## Rules
 
 A mod is **removed or refused** if it:
@@ -126,12 +142,14 @@ mods/my-mod/
   "name": "my-mod",
   "version": "1.0.0",
   "description": "What it does in one or two sentences.",
+  "tags": ["tools"],
   "network": [],
   "userConfig": {}
 }
 ```
 
 - `name` must match the folder: lowercase letters, digits and hyphens.
+- `tags` is optional: up to 5 tags from [`tags.json`](tags.json).
 - `network` lists every host the mod fetches from. Leave it empty if it never goes online.
 - Only these file types are accepted: `.ts .tsx .js .mjs .jsx .json .md .ico`.
 - Do not include `node_modules` or `.voidstrap-mod/types` (Voidstrap creates the types folder itself).
@@ -151,8 +169,8 @@ Layers, from submission to your computer:
    - it does not raise the version of an existing mod
    - it comes from an organization or bot account
 3. **Validation** (`.github/workflows/validate.yml`). It runs with a read only token and no secrets, and always uses the **maintainer's copy** of the checking scripts and dependency lock file, so a pull request cannot weaken the checks it is judged by. Install scripts are disabled. See [what the checks look for](#what-the-checks-look-for).
-4. **Human review.** `main` is protected:
-   - every change needs a pull request approved by the maintainer through `CODEOWNERS`
+4. **Review.** `main` is protected:
+   - every change needs an approved pull request: approved by the review bot when every requirement is met, otherwise by the maintainer
    - approvals are dismissed when new commits are pushed
    - both checks must pass
    - force pushes and branch deletion are blocked, also for admins
@@ -194,14 +212,54 @@ The rules live in [`scripts/rules.json`](scripts/rules.json) and [`scripts/valid
 | Words like password, token, api key, webhook | flagged for review |
 | Network hosts not on [`allowed-hosts.json`](allowed-hosts.json), or new hosts in an update | flagged for review and labelled `needs-review` |
 
-Passing the automatic checks does **not** mean a mod is accepted. The maintainer still reads every change.
+Passing the automatic checks is only the first step, see [Review process](#review-process).
 
 ## Review process
 
-1. You open a pull request. The ownership gate labels it `new-mod`, `update` or `remove`, plus `network` and `needs-review` when relevant, or closes it with an explanation.
-2. Validation runs. Fix any problems by pushing to the same branch (or pressing **Publish** again in Voidstrap).
-3. The maintainer reviews the code and the description. The maintainer may ask for changes.
-4. After approval the pull request is merged and the index updates within a few minutes. Voidstrap shows the mod, or its update, the next time the Library tab loads.
+Pull requests are reviewed and merged **automatically** when every requirement is met. A bot comment on the pull request lists the requirements and keeps itself up to date:
+
+| Requirement | Checked by |
+| --- | --- |
+| Automated safety checks pass (file types, size, banned code, cheats, TypeScript) | `validate.yml` |
+| Your account owns the mod, one mod per pull request, version raised | `ownership.yml` |
+| Author is not banned, account is a personal account | `review.yml` |
+| The pull request says what changed (20 characters or more) | `review.yml` |
+| Only contacts websites on `allowed-hosts.json` | `review.yml` |
+| Nothing flagged for a manual look (credential words, text that tries to instruct a reviewer) | `review.yml` |
+| AI security review says **safe** | `review.yml` |
+
+When everything is ✅, the bot approves and squash merges the pull request and rebuilds the index. The mod appears in Voidstrap within a few minutes, **without** the Verified badge.
+
+When anything is ❌, the pull request gets the `needs-review` label and waits for the maintainer. Fix the items and push again to re-run the review.
+
+### What the AI review is, honestly
+
+- It is a large language model (`openai/gpt-4.1`) called through **GitHub Models** from the `review.yml` workflow, using the repository's own GitHub token. No other service sees the code.
+- It reads the mod's files as data and answers `safe`, `unsafe` or `unsure` with a short summary. Anything except `safe` stops the automatic merge.
+- Files that contain text trying to instruct the reviewer are flagged before the AI sees them, and the AI is told never to follow instructions inside the files.
+- **AI review can be wrong.** It is one layer on top of the rule based checks, the sandbox, the ownership rules, the install warning for unverified mods, and the maintainer's ability to take any mod down at once. That is why automatically merged mods are never marked Verified.
+
+The review workflow runs in the trusted context of this repository but **never checks out or runs pull request code**: it reads files through the GitHub API, and it only merges the exact commit it reviewed.
+
+## Tags and search
+
+Add up to 5 tags to `plugin.json`, chosen from [`tags.json`](tags.json):
+
+```json
+"tags": ["appearance", "sidebar", "tools"]
+```
+
+Voidstrap's Library search understands plain words plus these filters, which can be combined:
+
+| Filter | Example |
+| --- | --- |
+| `tag:` | `tag:theme` |
+| `by:` | `by:KloBraticc` |
+| `is:verified`, `is:trusted`, `is:featured`, `is:installed`, `is:update`, `is:offline` | `is:verified tag:tools` |
+| `sort:` | `sort:new`, `sort:updated`, `sort:name`, `sort:relevance` |
+| `-word` | `theme -dark` excludes mods that mention dark |
+
+Results are ranked by how well they match, with verified, featured and trusted mods boosted.
 
 ## Reporting a bad mod
 
@@ -221,9 +279,36 @@ See [SECURITY.md](SECURITY.md). Malicious mods are removed from `main` immediate
 
 ## For the maintainer
 
+### Moderation commands
+
+Comment on **any issue or pull request** in this repository (only the maintainer account is obeyed):
+
+| Command | Effect |
+| --- | --- |
+| `/verify <mod>` | Verified badge for the current files of the mod |
+| `/unverify <mod>` | Remove the badge |
+| `/takedown <mod> <reason>` | Hide the mod from the library at once. Voidstrap warns people who installed it and turns it off |
+| `/restore <mod>` | Undo a takedown |
+| `/feature <mod> <1 to 100>` | Show the mod higher in the library |
+| `/unfeature <mod>` | Stop featuring it |
+| `/trust <login>` | Mods by this account install without the warning |
+| `/untrust <login>` | Undo |
+| `/ban <login> <reason>` | Hide all their mods and auto close their pull requests |
+| `/unban <login>` | Undo |
+
+The same actions are available from **Actions, Moderate, Run workflow**, or from a terminal:
+
+```
+gh workflow run moderate.yml -R KloBraticc/voidstrap-mods-library -f action=takedown -f target=<mod> -f reason="<why>"
+```
+
+Every change is a commit on the `moderation` branch, so there is a full history. The index rebuilds automatically afterwards.
+
+### Everything else
+
 - `npm ci --ignore-scripts` then `npm run validate` checks every mod locally.
-- `node scripts/build-index.mjs <commit> index.json` builds an index locally.
+- `node scripts/build-index.mjs <commit> index.json [moderation.json]` builds an index locally.
 - When the Voidstrap mod API changes, copy `src/Voidstrap.App/Resources/ModTypes.d.ts` from Voidstrap to `types/voidstrap.d.ts`.
-- Add a host to `allowed-hosts.json` only when it is a well known public API.
-- To remove a mod, delete its folder in a pull request. The index drops it on merge.
-- To move ownership, edit `owner.json` yourself after the current owner agrees in an issue.
+- Add a host to `allowed-hosts.json` or a tag to `tags.json` only in your own pull request.
+- To delete a mod's files for good, remove its folder in a pull request. A takedown is faster and reversible.
+

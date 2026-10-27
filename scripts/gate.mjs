@@ -60,6 +60,8 @@ const files = await listFiles();
 const reasons = [];
 const mods = new Set();
 
+const moderation = await readJsonAt('moderation.json', 'moderation');
+if (moderation && Array.isArray(moderation.banned) && moderation.banned.some(b => b.id === authorId)) reasons.push('this account is banned from publishing to the library');
 if (pr.user.type !== 'User') reasons.push(`pull requests must come from a personal GitHub account, not a ${pr.user.type}`);
 
 for (const file of files) {

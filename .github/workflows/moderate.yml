@@ -1,0 +1,108 @@
+name: Moderate
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        type: choice
+        options: [verify, unverify, takedown, restore, feature, unfeature, trust, untrust, ban, unban]
+      target:
+        description: Mod name (verify, takedown, feature) or GitHub login (trust, ban)
+        required: true
+      reason:
+        description: Reason (takedown and ban)
+        required: false
+      weight:
+        description: Featured weight from 1 to 100
+        required: false
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: moderation
+  cancel-in-progress: false
+
+jobs:
+  moderate:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.comment.user.id == 195697851 && startsWith(github.event.comment.body, '/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Read the command
+        id: command
+        env:
+          BODY: ${{ github.event.comment.body }}
+          IN_ACTION: ${{ inputs.action }}
+          IN_TARGET: ${{ inputs.target }}
+          IN_REASON: ${{ inputs.reason }}
+          IN_WEIGHT: ${{ inputs.weight }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            { echo "action=$IN_ACTION"; echo "target=$IN_TARGET"; echo "weight=$IN_WEIGHT"; echo "reason<<EOF_REASON"; echo "$IN_REASON"; echo "EOF_REASON"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          first=$(printf '%s' "$BODY" | head -n1 | tr -d '\r')
+          if ! printf '%s' "$first" | grep -Eq '^/(verify|unverify|takedown|restore|feature|unfeature|trust|untrust|ban|unban) @?[A-Za-z0-9/-]{1,104}( .{0,300})?$'; then
+            echo "Not a moderation command."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          action=$(printf '%s' "$first" | sed -E 's#^/([a-z]+) .*#\1#')
+          target=$(printf '%s' "$first" | sed -E 's#^/[a-z]+ ([^ ]+).*#\1#')
+          rest=$(printf '%s' "$first" | sed -E 's#^/[a-z]+ [^ ]+ ?##')
+          weight=""
+          if [ "$action" = "feature" ]; then weight="$rest"; rest=""; fi
+          { echo "action=$action"; echo "target=$target"; echo "weight=$weight"; echo "reason<<EOF_REASON"; echo "$rest"; echo "EOF_REASON"; } >> "$GITHUB_OUTPUT"
+      - name: Update the moderation list
+        id: apply
+        if: steps.command.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MOD_ACTION: ${{ steps.command.outputs.action }}
+          MOD_TARGET: ${{ steps.command.outputs.target }}
+          MOD_REASON: ${{ steps.command.outputs.reason }}
+          MOD_WEIGHT: ${{ steps.command.outputs.weight }}
+          MOD_ACTOR: ${{ github.actor }}
+        run: |
+          work="$RUNNER_TEMP/moderation"
+          url="https://github.com/${GITHUB_REPOSITORY}.git"
+          rm -rf "$work"
+          if git ls-remote --exit-code --heads "$url" moderation >/dev/null 2>&1; then
+            git clone -q --branch moderation --single-branch "$url" "$work"
+          else
+            git init -q -b moderation "$work"
+          fi
+          node scripts/moderate.mjs "$work/moderation.json"
+          cd "$work"
+          git add moderation.json
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "chore: ${MOD_ACTION} ${MOD_TARGET}"
+          git push -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:moderation
+      - name: Rebuild the index
+        if: steps.command.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run index.yml --repo "$GITHUB_REPOSITORY" --ref main
+      - name: Reply
+        if: always() && github.event_name == 'issue_comment' && steps.command.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MESSAGE: ${{ steps.apply.outputs.message }}
+          OUTCOME: ${{ steps.apply.outcome }}
+        run: |
+          if [ "$OUTCOME" = "success" ]; then text="Done: $MESSAGE The library index updates in about a minute."; else text="That did not work: ${MESSAGE:-see the Moderate run}"; fi
+          gh issue comment "${{ github.event.issue.number }}" --repo "$GITHUB_REPOSITORY" --body "$text"

@@ -41,3 +41,12 @@ export function compareVersions(a, b) {
   for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
   return 0;
 }
+
+export const TAGS = JSON.parse(fs.readFileSync(path.join(ROOT, 'tags.json'), 'utf8')).tags;
+
+export function fingerprint(files) {
+  const lines = files.map(f => `${f.path}:${f.sha256}`).sort().join('\n');
+  return crypto.createHash('sha256').update(lines).digest('hex');
+}
+
+export const EMPTY_MODERATION = { schema: 1, trusted: [], verified: {}, featured: {}, takedowns: {}, banned: [] };
