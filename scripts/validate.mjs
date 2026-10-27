@@ -15,9 +15,25 @@ function fail(mod, text) { errors.push(`${mod}: ${text}`); }
 function review(mod, text) { reviews.push(`${mod}: ${text}`); }
 
 function checkIcon(mod, file) {
+  if (file.rel !== 'icon.ico') { fail(mod, `${file.rel} must be named icon.ico at the root of the mod`); return; }
   const bytes = fs.readFileSync(file.full);
   if (file.size > L.maxIconBytes) fail(mod, `${file.rel} is larger than ${L.maxIconBytes} bytes`);
-  if (bytes.length < 6 || bytes[0] !== 0 || bytes[1] !== 0 || bytes[2] !== 1 || bytes[3] !== 0) fail(mod, `${file.rel} is not a valid .ico icon`);
+  if (bytes.length < 22 || bytes[0] !== 0 || bytes[1] !== 0 || bytes[2] !== 1 || bytes[3] !== 0) { fail(mod, `${file.rel} is not a valid .ico icon`); return; }
+  const count = bytes.readUInt16LE(4);
+  if (count < 1 || count > 16 || bytes.length < 6 + count * 16) { fail(mod, `${file.rel} has an invalid icon directory`); return; }
+  for (let i = 0; i < count; i++) {
+    const entry = 6 + i * 16;
+    const size = bytes.readUInt32LE(entry + 8);
+    const offset = bytes.readUInt32LE(entry + 12);
+    if (size < 40 || offset < 6 + count * 16 || offset + size > bytes.length) { fail(mod, `${file.rel} has an out-of-bounds icon frame`); return; }
+    const isPng = bytes[offset] === 0x89 && bytes[offset + 1] === 0x50 && bytes[offset + 2] === 0x4E && bytes[offset + 3] === 0x47 && bytes[offset + 4] === 0x0D && bytes[offset + 5] === 0x0A && bytes[offset + 6] === 0x1A && bytes[offset + 7] === 0x0A;
+    const isBmp = bytes.readUInt32LE(offset) === 40;
+    if (!isPng && !isBmp) { fail(mod, `${file.rel} frame ${i + 1} is neither a PNG nor a BMP icon frame`); return; }
+  }
+  const ascii = bytes.toString('latin1');
+  for (const rule of blocked) {
+    if (rule.level !== 'review' && rule.regex.test(ascii)) { fail(mod, `${file.rel} metadata violates rule: ${rule.reason}`); return; }
+  }
 }
 
 function checkText(mod, file, isCode) {
