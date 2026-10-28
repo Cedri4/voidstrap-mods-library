@@ -243,31 +243,40 @@ async function aiReview(mod, manifest, files, notes) {
 }
 
 async function sendAiRequest(system, content) {
+  const messages = [{ role: 'system', content: system }, { role: 'user', content }];
+  const bodies = [
+    { model, temperature: 0, response_format: { type: 'json_object' }, messages },
+    { model, temperature: 0, messages }
+  ];
   const retryableStatus = status => status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
   let result = { ok: false, status: 0, raw: '', retryable: true };
-  for (let i = 0; i < 3; i++) {
-    if (i > 0)
-      await sleep(4000 * i);
-    let res;
-    try {
-      res = await fetch(aiUrl, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${aiKey}`, 'api-key': aiKey, 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify({ model, temperature: 0, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content }] })
-      });
-    } catch (e) {
-      result = { ok: false, status: 0, raw: String(e?.message ?? e).slice(0, 300), retryable: true };
-      continue;
+  for (const body of bodies) {
+    for (let i = 0; i < 3; i++) {
+      if (i > 0)
+        await sleep(4000 * i);
+      let res;
+      try {
+        res = await fetch(aiUrl, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${aiKey}`, 'api-key': aiKey, 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify(body)
+        });
+      } catch (e) {
+        result = { ok: false, status: 0, raw: String(e?.message ?? e).slice(0, 300), retryable: true };
+        continue;
+      }
+      const raw = await res.text();
+      if (res.ok)
+        return { ok: true, status: res.status, raw };
+      const retryAfter = Number.parseInt(res.headers.get('retry-after'), 10);
+      if (Number.isFinite(retryAfter) && retryAfter > 0 && retryAfter <= 60)
+        await sleep(retryAfter * 1000);
+      result = { ok: false, status: res.status, raw, retryable: retryableStatus(res.status) };
+      if (res.status === 400 && /json_validate_failed|failed_generation|response_format/i.test(raw))
+        break;
+      if (!result.retryable)
+        return result;
     }
-    const raw = await res.text();
-    if (res.ok)
-      return { ok: true, status: res.status, raw };
-    const retryAfter = Number.parseInt(res.headers.get('retry-after'), 10);
-    if (Number.isFinite(retryAfter) && retryAfter > 0 && retryAfter <= 60)
-      await sleep(retryAfter * 1000);
-    result = { ok: false, status: res.status, raw, retryable: retryableStatus(res.status) };
-    if (!result.retryable)
-      return result;
   }
   return result;
 }
