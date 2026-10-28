@@ -1,9 +1,10 @@
 {
   "limits": {
-    "maxModBytes": 1048576,
+    "maxModBytes": 20971520,
     "maxFiles": 64,
     "maxFileBytes": 262144,
     "maxIconBytes": 262144,
+    "maxMediaBytes": 16777216,
     "maxPathDepth": 4,
     "maxLineLength": 400,
     "maxDescription": 300,
@@ -17,7 +18,13 @@
     ".jsx",
     ".json",
     ".md",
-    ".ico"
+    ".ico",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".bmp"
   ],
   "codeExtensions": [
     ".ts",

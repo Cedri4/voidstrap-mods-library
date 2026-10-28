@@ -10,6 +10,7 @@ const only = process.argv.slice(2).filter(a => !a.startsWith('--'));
 const skipTypes = process.argv.includes('--no-types');
 const blocked = RULES.blocked.map(rule => ({ ...rule, regex: new RegExp(rule.pattern, 'i') }));
 const L = RULES.limits;
+const mediaExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
 
 function fail(mod, text) { errors.push(`${mod}: ${text}`); }
 function review(mod, text) { reviews.push(`${mod}: ${text}`); }
@@ -79,6 +80,10 @@ function checkMod(mod) {
     const ext = path.extname(file.rel).toLowerCase();
     if (!RULES.allowedExtensions.includes(ext)) { fail(mod, `${file.rel} has a file type that is not allowed`); continue; }
     if (ext === '.ico') { checkIcon(mod, file); continue; }
+    if (mediaExtensions.has(ext)) {
+      if (file.size > L.maxMediaBytes) fail(mod, `${file.rel} exceeds the media size limit`);
+      continue;
+    }
     if (file.size > L.maxFileBytes) fail(mod, `${file.rel} is larger than ${L.maxFileBytes} bytes`);
     checkText(mod, file, RULES.codeExtensions.includes(ext));
   }
@@ -146,6 +151,14 @@ const mods = only.length ? only : listMods();
 for (const mod of mods) {
   if (!fs.existsSync(path.join(MODS, mod))) continue;
   checkMod(mod);
+}
+
+if (errors.length === 0) {
+  try {
+    execFileSync(process.env.VOIDSTRAP_MEDIA_PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), [path.join(ROOT, 'scripts', 'media-check.py'), ...mods], { cwd: ROOT, stdio: 'inherit', timeout: 300000 });
+  } catch {
+    fail('media', 'local media checking failed or is unavailable; install scripts/media-requirements.txt and retry');
+  }
 }
 
 const summary = [];
