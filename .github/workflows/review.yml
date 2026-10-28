@@ -46,4 +46,5 @@ jobs:
           AI_REVIEW_URL: ${{ vars.AI_REVIEW_URL }}
           AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL }}
           AI_REVIEW_FALLBACK_MODEL: ${{ vars.AI_REVIEW_FALLBACK_MODEL }}
+          AI_REVIEW_LANGUAGE: ${{ vars.AI_REVIEW_LANGUAGE }}
         run: node scripts/review.mjs
