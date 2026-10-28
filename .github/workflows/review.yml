@@ -45,4 +45,5 @@ jobs:
           AI_REVIEW_KEY: ${{ secrets.AI_REVIEW_KEY }}
           AI_REVIEW_URL: ${{ vars.AI_REVIEW_URL }}
           AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL }}
+          AI_REVIEW_FALLBACK_MODEL: ${{ vars.AI_REVIEW_FALLBACK_MODEL }}
         run: node scripts/review.mjs

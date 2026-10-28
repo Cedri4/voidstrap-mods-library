@@ -39,14 +39,14 @@ function checkIcon(mod, file) {
 
 function checkText(mod, file, isCode) {
   const text = fs.readFileSync(file.full, 'utf8');
-  if (text.includes('\u0000')) fail(mod, `${file.rel} contains binary data`);
+  if (text.includes('\u0000')) fail(mod, `${file.rel} contains binary data. Text files must hold plain readable text only, so re-save the file as text or remove it`);
   if (/[​-‏‪-‮⁦-⁩﻿]/.test(text)) fail(mod, `${file.rel} contains invisible or direction changing characters`);
   const lines = text.split(/\r?\n/);
   lines.forEach((line, i) => {
     const where = `${file.rel}:${i + 1}`;
-    if (isCode && line.length > L.maxLineLength) fail(mod, `${where} is longer than ${L.maxLineLength} characters, minified or packed code is not accepted`);
-    if (new RegExp(`[A-Za-z0-9+/=]{${L.maxEncodedRun},}`).test(line)) fail(mod, `${where} holds a long encoded blob`);
-    if (new RegExp(`(0x)?[0-9a-fA-F]{${L.maxEncodedRun},}`).test(line)) fail(mod, `${where} holds a long hex blob`);
+    if (isCode && line.length > L.maxLineLength) fail(mod, `${where} is longer than ${L.maxLineLength} characters. Lines this long usually mean minified or packed code, which is not accepted. Write normal readable code with short lines instead`);
+    if (new RegExp(`[A-Za-z0-9+/=]{${L.maxEncodedRun},}`).test(line)) fail(mod, `${where} holds a long encoded blob. A very long run of letters and digits looks like hidden data. Keep data short and readable`);
+    if (new RegExp(`(0x)?[0-9a-fA-F]{${L.maxEncodedRun},}`).test(line)) fail(mod, `${where} holds a long hex blob. A very long run of hex digits looks like hidden data. Keep data short and readable`);
     for (const rule of blocked) {
       if (!rule.regex.test(line)) continue;
       if (rule.level === 'review') review(mod, `${where} ${rule.reason}`);

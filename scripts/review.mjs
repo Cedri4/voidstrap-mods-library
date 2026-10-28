@@ -8,6 +8,8 @@ const repo = process.env.GITHUB_REPOSITORY;
 const maintainerId = Number(process.env.MAINTAINER_ID);
 const maintainerLogin = process.env.MAINTAINER_LOGIN;
 const model = process.env.AI_REVIEW_MODEL || 'gpt-4.1';
+const fallbackModel = (process.env.AI_REVIEW_FALLBACK_MODEL || '').trim();
+const reviewModels = fallbackModel && fallbackModel !== model ? [model, fallbackModel] : [model];
 const aiUrl = process.env.AI_REVIEW_URL || 'https://api.openai.com/v1/chat/completions';
 const aiKey = process.env.AI_REVIEW_KEY ?? '';
 const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
@@ -15,19 +17,42 @@ const run = event.workflow_run ?? null;
 const triggerComment = event.comment ?? null;
 const moderation = process.env.MODERATION_FILE && fs.existsSync(process.env.MODERATION_FILE) ? { ...EMPTY_MODERATION, ...JSON.parse(fs.readFileSync(process.env.MODERATION_FILE, 'utf8')) } : EMPTY_MODERATION;
 const MARKER = '<!-- voidstrap-library-review -->';
+
+const AI_VERDICT_HELP = {
+  safe: 'safe means the automated reviewer read every file and found nothing dangerous, so the mod can merge on its own.',
+  unsafe: 'unsafe means the reviewer saw something it considers dangerous. Read the summary and the list of worries below, change your mod, or write a comment if you think it is wrong.',
+  unsure: 'unsure means the reviewer could not decide on its own, so a person reads the mod before it merges. This is not an error and not a rejection, it only means a human takes a look.'
+};
 const INJECTION = /(ignore|disregard|forget|override)\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier|system)\s+(instructions|rules|prompts?)|you\s+are\s+(now\s+)?(an?\s+|the\s+)?(ai|assistant|reviewer|language model)|system\s+prompt|mark\s+(this|it)\s+(as\s+)?safe|respond\s+with\s+.{0,20}safe|(say|respond|answer|output|return)\s+.{0,30}verdict/i;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function gh(method, url, body) {
-  const res = await fetch(url.startsWith('http') ? url : `https://api.github.com${url}`, {
-    method,
-    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'voidstrap-mods-library-review' },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`${method} ${url} returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  return res.status === 204 ? null : res.json();
+  const target = url.startsWith('http') ? url : `https://api.github.com${url}`;
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0)
+      await sleep(3000 * attempt);
+    let res;
+    try {
+      res = await fetch(target, {
+        method,
+        headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'voidstrap-mods-library-review' },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(30000)
+      });
+    } catch (e) {
+      lastError = new Error(`${method} ${url} failed: ${String(e?.message ?? e).slice(0, 200)}`);
+      continue;
+    }
+    if (res.status === 404) return null;
+    if (res.ok) return res.status === 204 ? null : res.json();
+    const text = await res.text();
+    lastError = new Error(`${method} ${url} returned ${res.status}: ${text.slice(0, 300)}`);
+    if (res.status !== 429 && res.status !== 403 && res.status < 500)
+      throw lastError;
+  }
+  throw lastError;
 }
 
 async function findPullRequest() {
@@ -233,20 +258,37 @@ async function aiReview(mod, manifest, files, notes) {
       ]
     : [{ label: 'text only', content: user }];
   let sent = null;
+  let answered = null;
   for (const attempt of attempts) {
-    sent = await sendAiRequest(system, attempt.content);
-    if (sent.ok)
-      return readAiAnswer(sent.raw);
-    console.log(`AI review request failed (${attempt.label}): ${sent.status} ${sent.raw.slice(0, 300)}`);
+    for (const name of reviewModels) {
+      sent = await sendAiRequest(name, system, attempt.content);
+      if (sent.ok) {
+        answered = readAiAnswer(sent.raw);
+        if (answered)
+          return answered;
+        console.log(`AI review answer from ${name} could not be read, asking again with a stricter instruction`);
+        const again = await sendAiRequest(name, system + '\nAnswer with JSON only and nothing else. No prose before or after the JSON.', attempt.content);
+        if (again.ok) {
+          answered = readAiAnswer(again.raw);
+          if (answered)
+            return answered;
+        } else {
+          console.log(`AI review request failed (${attempt.label}, second try): ${again.status} ${again.raw.slice(0, 300)}`);
+        }
+      } else {
+        console.log(`AI review request failed (${attempt.label}, model ${name}): ${sent.status} ${sent.raw.slice(0, 300)}`);
+      }
+    }
   }
-  return { verdict: 'unsure', summary: `The AI review could not run (${sent?.status ?? 'network error'}). It retries on the next push or comment.`, risks: [] };
+  const reason = sent && sent.status ? sent.status : 'a network error';
+  return { verdict: 'unsure', summary: `The AI review could not run (${reason}) after several tries, so a person reviews this pull request. It tries again on the next push or comment.`, risks: [] };
 }
 
-async function sendAiRequest(system, content) {
+async function sendAiRequest(modelName, system, content) {
   const messages = [{ role: 'system', content: system }, { role: 'user', content }];
   const bodies = [
-    { model, temperature: 0, response_format: { type: 'json_object' }, messages },
-    { model, temperature: 0, messages }
+    { model: modelName, temperature: 0, response_format: { type: 'json_object' }, messages },
+    { model: modelName, temperature: 0, messages }
   ];
   const retryableStatus = status => status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
   let result = { ok: false, status: 0, raw: '', retryable: true };
@@ -259,7 +301,8 @@ async function sendAiRequest(system, content) {
         res = await fetch(aiUrl, {
           method: 'POST',
           headers: { authorization: `Bearer ${aiKey}`, 'api-key': aiKey, 'content-type': 'application/json', accept: 'application/json' },
-          body: JSON.stringify(body)
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(120000)
         });
       } catch (e) {
         result = { ok: false, status: 0, raw: String(e?.message ?? e).slice(0, 300), retryable: true };
@@ -294,7 +337,7 @@ function readAiAnswer(raw) {
     return { verdict, summary, risks, suggestions, reply };
   } catch (e) {
     console.log(`AI review answer could not be read: ${raw.slice(0, 300)}`);
-    return { verdict: 'unsure', summary: 'The AI review returned an answer that could not be read.', risks: [] };
+    return null;
   }
 }
 
@@ -308,106 +351,144 @@ async function postSuggestions(pr, mod, files, suggestions) {
   await gh('POST', `/repos/${repo}/pulls/${pr.number}/reviews`, { commit_id: pr.head.sha, event: 'COMMENT', body }).catch(e => console.log(`Could not post suggestions: ${e.message}`));
 }
 
-const pr = await findPullRequest();
-if (triggerComment && (triggerComment.user.type === 'Bot' || triggerComment.body.trim().startsWith('/') || (triggerComment.user.id !== event.issue?.user?.id && triggerComment.user.id !== maintainerId))) {
-  console.log('Comment is not from the author or maintainer, nothing to review.');
-  process.exit(0);
-}
-if (!pr || pr.state !== 'open') {
-  console.log('No open pull request for this run.');
-  process.exit(0);
-}
-if (run && pr.head.sha !== run.head_sha) {
-  console.log('The pull request changed after validation, a newer run will review it.');
-  process.exit(0);
-}
-const labels = pr.labels.map(l => l.name);
-if (labels.includes('ownership-violation')) process.exit(0);
+async function runReview() {
+	const pr = await findPullRequest();
+	if (triggerComment && (triggerComment.user.type === 'Bot' || triggerComment.body.trim().startsWith('/') || (triggerComment.user.id !== event.issue?.user?.id && triggerComment.user.id !== maintainerId))) {
+	  console.log('Comment is not from the author or maintainer, nothing to review.');
+	  process.exit(0);
+	}
+	if (!pr || pr.state !== 'open') {
+	  console.log('No open pull request for this run.');
+	  process.exit(0);
+	}
+	if (run && pr.head.sha !== run.head_sha) {
+	  console.log('The pull request changed after validation, a newer run will review it.');
+	  process.exit(0);
+	}
+	const labels = pr.labels.map(l => l.name);
+	if (labels.includes('ownership-violation')) process.exit(0);
 
-const files = await gh('GET', `/repos/${repo}/pulls/${pr.number}/files?per_page=100`);
-const mods = [...new Set(files.flatMap(f => [f.filename, f.previous_filename]).filter(Boolean).filter(p => p.startsWith('mods/')).map(p => p.split('/')[1]))];
-const mod = mods.length === 1 && NAME_PATTERN.test(mods[0]) ? mods[0] : null;
-const removing = mod && files.every(f => f.status === 'removed');
+	const files = await gh('GET', `/repos/${repo}/pulls/${pr.number}/files?per_page=100`);
+	const mods = [...new Set(files.flatMap(f => [f.filename, f.previous_filename]).filter(Boolean).filter(p => p.startsWith('mods/')).map(p => p.split('/')[1]))];
+	const mod = mods.length === 1 && NAME_PATTERN.test(mods[0]) ? mods[0] : null;
+	const removing = mod && files.every(f => f.status === 'removed');
 
-const requirements = [];
-const add = (ok, text, detail = '') => requirements.push({ ok, text, detail });
-const validated = run ? run.conclusion === 'success' : await checkPassed(pr.head.sha, 'validate');
-add(validated, 'Automated safety checks passed (file types, size, banned code, cheats, TypeScript)', validated ? '' : (run ? `[see the Validate run](${run.html_url})` : 'see the Validate check'));
-add(await checkPassed(pr.head.sha, 'gate'), 'Ownership check passed (your account owns this mod, one mod per pull request, version raised)');
-add(mod !== null, 'Changes exactly one mod inside mods/');
-add(!moderation.banned.some(b => b.id === pr.user.id), 'Author is not banned from the library');
-add(pr.user.type === 'User', 'Opened from a personal GitHub account');
-const bodyOk = (pr.body ?? '').trim().length >= 20;
-add(bodyOk, 'The pull request says what changed', bodyOk ? '' : 'edit the description of the pull request');
+	const requirements = [];
+	const add = (ok, text, detail = '') => requirements.push({ ok, text, detail });
+	const validated = run ? run.conclusion === 'success' : await checkPassed(pr.head.sha, 'validate');
+	add(validated, 'Automated safety checks passed (file types, size, banned code, cheats, TypeScript)', validated ? '' : (run ? `open the Validate run and read the problems it lists, each one says the file, the line and the reason: ${run.html_url}` : 'open the Validate check on this pull request and read the problems it lists, each one says the file, the line and the reason'));
+	const gatePassed = await checkPassed(pr.head.sha, 'gate');
+	add(gatePassed, 'Ownership check passed (your account owns this mod, one mod per pull request, version raised)', gatePassed ? '' : 'open the Ownership check to read what was wrong. The most common fixes are: make the version number in .voidstrap-mod/plugin.json bigger than the published one, change only your own mod folder, and make every commit with your own account');
+	add(mod !== null, 'Changes exactly one mod inside mods/', mod !== null ? '' : (mods.length > 1 ? `this pull request changes ${mods.length} mods. Every pull request may change exactly one mod, so close this one and open one pull request per mod` : 'every changed file must live inside one mod folder, like mods/your-mod-name/. Files outside a mod folder can only be changed by the maintainer'));
+	add(!moderation.banned.some(b => b.id === pr.user.id), 'Author is not banned from the library', moderation.banned.some(b => b.id === pr.user.id) ? 'this account cannot publish mods. If you believe this is a mistake, open an issue and explain' : '');
+	add(pr.user.type === 'User', 'Opened from a personal GitHub account', pr.user.type === 'User' ? '' : 'mods can only be published from your own personal GitHub account. Bot accounts and organization accounts cannot publish');
+	const bodyOk = (pr.body ?? '').trim().length >= 20;
+	add(bodyOk, 'The pull request says what changed', bodyOk ? '' : 'write a sentence or two in the description of this pull request: what did you change, and why did you change it? This helps reviewers and everyone who installs the mod later');
 
-let manifest = {};
-let modFiles = [];
-let ai = { verdict: 'unsure', summary: 'Not reviewed.', risks: [], suggestions: [], reply: '' };
-const notes = await authorNotes(pr);
-let flags = [];
-if (mod && !removing) {
-  modFiles = await readModFiles(pr.head.sha, mod);
-  try { manifest = JSON.parse(modFiles.find(f => f.path === '.voidstrap-mod/plugin.json')?.text ?? '{}'); } catch { manifest = {}; }
-  const hosts = Array.isArray(manifest.network) ? manifest.network : [];
-  const unknownHosts = hosts.filter(h => !ALLOWED_HOSTS.includes(h));
-  const baseFile = await gh('GET', `/repos/${repo}/contents/mods/${mod}/.voidstrap-mod/plugin.json?ref=${pr.base.sha}`);
-  let baseHosts = null;
-  try { baseHosts = baseFile ? JSON.parse(Buffer.from(baseFile.content, 'base64').toString('utf8')).network ?? [] : null; } catch { baseHosts = []; }
-  const addedHosts = baseHosts ? hosts.filter(h => !baseHosts.includes(h)) : [];
-  add(unknownHosts.length === 0, 'Only contacts approved websites', unknownHosts.length ? `asks for ${unknownHosts.join(', ')}, the maintainer has to look` : '');
-  add(addedHosts.length === 0, 'An update does not add new websites', addedHosts.length ? `adds ${addedHosts.join(', ')}, the maintainer has to look` : '');
-  flags = scanForReview(modFiles).concat(scanForReview(notes.map((n, i) => ({ path: `comment by @${n.who} #${i + 1}`, text: n.text }))));
-  const aiReady = requirements.every(r => r.ok) && flags.length === 0 && !pr.draft;
-  const usesAccount = Array.isArray(manifest.permissions) && manifest.permissions.includes('roblox-account');
-  if (aiReady) ai = await aiReview(mod, manifest, modFiles, notes);
-  else ai = { verdict: 'unsure', summary: 'The AI review runs after every other requirement is met.', risks: [], suggestions: [], reply: '' };
-  const accountOk = !usesAccount || pr.user.id === maintainerId || ai.verdict === 'safe';
-  add(accountOk, 'Does not ask for the Roblox account', usesAccount ? (accountOk ? 'read-only Roblox account access passed security review' : 'mods that use the Roblox account are always reviewed by the maintainer') : '');
-  add(flags.length === 0, 'Nothing flagged for a manual look', flags.slice(0, 8).join('<br>'));
-  add(ai.verdict === 'safe', 'AI security review found nothing unsafe', ai.verdict === 'safe' ? '' : `verdict: ${ai.verdict}`);
-} else if (removing) {
-  add(true, 'Removes a mod owned by the author');
+	let manifest = {};
+	let modFiles = [];
+	let ai = { verdict: 'unsure', summary: 'Not reviewed.', risks: [], suggestions: [], reply: '' };
+	const notes = await authorNotes(pr);
+	let flags = [];
+	if (mod && !removing) {
+	  modFiles = await readModFiles(pr.head.sha, mod);
+	  try { manifest = JSON.parse(modFiles.find(f => f.path === '.voidstrap-mod/plugin.json')?.text ?? '{}'); } catch { manifest = {}; }
+	  const hosts = Array.isArray(manifest.network) ? manifest.network : [];
+	  const unknownHosts = hosts.filter(h => !ALLOWED_HOSTS.includes(h));
+	  const baseFile = await gh('GET', `/repos/${repo}/contents/mods/${mod}/.voidstrap-mod/plugin.json?ref=${pr.base.sha}`);
+	  let baseHosts = null;
+	  try { baseHosts = baseFile ? JSON.parse(Buffer.from(baseFile.content, 'base64').toString('utf8')).network ?? [] : null; } catch { baseHosts = []; }
+	  const addedHosts = baseHosts ? hosts.filter(h => !baseHosts.includes(h)) : [];
+	  add(unknownHosts.length === 0, 'Only contacts approved websites', unknownHosts.length ? `the mod asks for ${unknownHosts.join(', ')}, which is not on the approved list yet. If the mod really needs this website, wait for the maintainer to approve it. If it does not need it, remove the website from the network list in .voidstrap-mod/plugin.json.` : '');
+	  add(addedHosts.length === 0, 'An update does not add new websites', addedHosts.length ? `this update starts talking to ${addedHosts.join(', ')}, which it did not do before. Updates must not quietly add new websites. Remove the new website, or ask the maintainer first.` : '');
+	  flags = scanForReview(modFiles).concat(scanForReview(notes.map((n, i) => ({ path: `comment by @${n.who} #${i + 1}`, text: n.text }))));
+	  const aiReady = requirements.every(r => r.ok) && flags.length === 0 && !pr.draft;
+	  const usesAccount = Array.isArray(manifest.permissions) && manifest.permissions.includes('roblox-account');
+	  if (aiReady) ai = await aiReview(mod, manifest, modFiles, notes);
+	  else ai = { verdict: 'unsure', summary: 'The AI review runs after every other requirement is met.', risks: [], suggestions: [], reply: '' };
+	  const accountOk = !usesAccount || pr.user.id === maintainerId || ai.verdict === 'safe';
+	  add(accountOk, 'Does not ask for the Roblox account', usesAccount ? (accountOk ? 'the security review looked at the Roblox account access and found it read only and safe' : 'this mod asks to use your Roblox account (the roblox-account permission). A person must first check that it only reads what its description says, never buys or changes anything, and never sends your data anywhere else. The maintainer will look at it, and the AI review can also clear it when it finds nothing dangerous.') : '');
+	  add(flags.length === 0, 'Nothing flagged for a manual look', flags.length ? `a person needs to look at these lines first:<br>${flags.slice(0, 8).join('<br>')}` : '');
+	  add(ai.verdict === 'safe', 'AI security review found nothing unsafe', ai.verdict === 'safe' ? '' : `the AI review said ${ai.verdict}, and the merge needs safe. unsure means the reviewer could not decide. unsafe means it found a problem, read the summary and the risks below. If you do not understand the problem, write a comment and ask.`);
+	} else if (removing) {
+	  add(true, 'Removes a mod owned by the author');
+	}
+
+	add(!pr.draft, 'Marked ready for review, not a draft', pr.draft ? 'when you are happy with the mod, press the Ready for review button at the top of this pull request' : '');
+	const ready = requirements.every(r => r.ok);
+	const lines = [
+	  MARKER,
+	  '## Library requirements',
+	  '',
+	  '| | What is checked | What it means and how to fix it |',
+	  '| --- | --- | --- |',
+	  ...requirements.map(r => `| ${r.ok ? '✅' : '❌'} | ${r.text} | ${r.detail.replace(/\|/g, '/')} |`),
+	  '',
+	  '**How to read this table**',
+	  '',
+	  'Every row with ✅ is finished and good. Rows with ❌ are what stops the merge right now.',
+	  'To fix a row, follow the words in the last column, push your change, and the review starts again on its own. You do not need to close and reopen the pull request.',
+	  'If a row stays ❌ and you do not know what to do, write a comment under this pull request and ask. Questions are always welcome, and the review will answer you.',
+	  ''
+	];
+	if (mod && !removing) {
+	  lines.push(`**AI review (${model}):** ${ai.verdict}. ${ai.summary}`);
+	  lines.push('', AI_VERDICT_HELP[ai.verdict] ?? '');
+	  if (ai.risks.length) lines.push('', '**What the review is worried about:**', ...ai.risks.map(r => `- ${r}`));
+	  if (ai.reply) lines.push('', `**Reply to @${pr.user.login}:** ${ai.reply}`);
+	  lines.push('');
+	}
+	lines.push(ready
+	  ? 'Every requirement is met, so this pull request is approved and merged automatically. Your mod shows up inside Voidstrap for everyone within a few minutes. It starts without the Verified badge, and the maintainer can verify it later.'
+	  : `This pull request is not merged yet. Fix the rows marked ❌ and push again, or wait for @${maintainerLogin} to review it. Nothing is deleted and you cannot break anything by trying again.`);
+	lines.push('', '<sub>The AI review is an extra safety net, not a guarantee. The automated checks, the ownership rules and the power of the maintainer to remove a mod at any time still apply. You can ask questions at any time by commenting on this pull request.</sub>');
+	await upsertComment(pr, lines.join('\n'));
+	await postSuggestions(pr, mod, modFiles, ai.suggestions ?? []);
+
+	if (!ready) {
+	  if (!labels.includes('needs-review')) await gh('POST', `/repos/${repo}/issues/${pr.number}/labels`, { labels: ['needs-review'] });
+	  if (pr.user.id !== maintainerId) await gh('POST', `/repos/${repo}/pulls/${pr.number}/requested_reviewers`, { reviewers: [maintainerLogin] }).catch(() => null);
+	  console.log('Waiting for the maintainer.');
+	  process.exit(0);
+	}
+
+	await gh('POST', `/repos/${repo}/issues/${pr.number}/labels`, { labels: ['auto-approved'] });
+	if (labels.includes('needs-review')) await gh('DELETE', `/repos/${repo}/issues/${pr.number}/labels/needs-review`);
+	await gh('POST', `/repos/${repo}/pulls/${pr.number}/reviews`, { commit_id: pr.head.sha, event: 'APPROVE', body: 'Every library requirement is met.' });
+	const merged = await gh('PUT', `/repos/${repo}/pulls/${pr.number}/merge`, { sha: pr.head.sha, merge_method: 'squash', commit_title: `${pr.title} (#${pr.number})` }).catch(e => ({ error: e.message }));
+	if (merged?.merged) {
+	  await gh('POST', `/repos/${repo}/actions/workflows/index.yml/dispatches`, { ref: 'main' });
+	  console.log(`Merged #${pr.number}.`);
+	} else {
+	  console.log(`Could not merge #${pr.number}: ${merged?.error ?? merged?.message ?? 'unknown'}`);
+	  process.exit(1);
+	}
+
 }
 
-add(!pr.draft, 'Marked ready for review, not a draft', pr.draft ? 'press Ready for review when you are done' : '');
-const ready = requirements.every(r => r.ok);
-const lines = [
-  MARKER,
-  '## Library requirements',
-  '',
-  '| | Requirement | Details |',
-  '| --- | --- | --- |',
-  ...requirements.map(r => `| ${r.ok ? '✅' : '❌'} | ${r.text} | ${r.detail.replace(/\|/g, '/')} |`),
-  ''
-];
-if (mod && !removing) {
-  lines.push(`**AI review (${model}):** ${ai.verdict}. ${ai.summary}`);
-  if (ai.risks.length) lines.push('', ...ai.risks.map(r => `- ${r}`));
-  if (ai.reply) lines.push('', `**Reply to @${pr.user.login}:** ${ai.reply}`);
-  lines.push('');
-}
-lines.push(ready
-  ? 'Every requirement is met, so this pull request is approved and merged automatically. The mod shows up in Voidstrap within a few minutes, without the Verified badge until the maintainer verifies it.'
-  : `Not merged automatically. Fix the items marked ❌ and push again, or wait for @${maintainerLogin} to review it.`);
-lines.push('', '<sub>The AI review is an extra safety net, not a guarantee. Automated checks, ownership rules and the maintainer’s takedown power still apply.</sub>');
-await upsertComment(pr, lines.join('\n'));
-await postSuggestions(pr, mod, modFiles, ai.suggestions ?? []);
-
-if (!ready) {
-  if (!labels.includes('needs-review')) await gh('POST', `/repos/${repo}/issues/${pr.number}/labels`, { labels: ['needs-review'] });
-  if (pr.user.id !== maintainerId) await gh('POST', `/repos/${repo}/pulls/${pr.number}/requested_reviewers`, { reviewers: [maintainerLogin] }).catch(() => null);
-  console.log('Waiting for the maintainer.');
-  process.exit(0);
-}
-
-await gh('POST', `/repos/${repo}/issues/${pr.number}/labels`, { labels: ['auto-approved'] });
-if (labels.includes('needs-review')) await gh('DELETE', `/repos/${repo}/issues/${pr.number}/labels/needs-review`);
-await gh('POST', `/repos/${repo}/pulls/${pr.number}/reviews`, { commit_id: pr.head.sha, event: 'APPROVE', body: 'Every library requirement is met.' });
-const merged = await gh('PUT', `/repos/${repo}/pulls/${pr.number}/merge`, { sha: pr.head.sha, merge_method: 'squash', commit_title: `${pr.title} (#${pr.number})` }).catch(e => ({ error: e.message }));
-if (merged?.merged) {
-  await gh('POST', `/repos/${repo}/actions/workflows/index.yml/dispatches`, { ref: 'main' });
-  console.log(`Merged #${pr.number}.`);
-} else {
-  console.log(`Could not merge #${pr.number}: ${merged?.error ?? merged?.message ?? 'unknown'}`);
+try {
+  await runReview();
+} catch (error) {
+  console.log(`The review crashed: ${String(error?.message ?? error).slice(0, 400)}`);
+  try {
+    const crashedPr = await findPullRequest();
+    if (crashedPr) {
+      const crashBody = [
+        MARKER,
+        '## The automated review stopped with an error',
+        '',
+        'Something went wrong while the review was running. This is not a problem with your mod, and nothing is lost.',
+        '',
+        'Write any comment on this pull request to start the review again. If it keeps stopping, the maintainer reads the mod and reviews it by hand.',
+        '',
+        `The error was: ${String(error?.message ?? error).slice(0, 300)}`,
+        '',
+        `<sub>The full error is in the workflow log for @${maintainerLogin}.</sub>`
+      ].join('\n');
+      await upsertComment(crashedPr, crashBody);
+    }
+  } catch {
+  }
   process.exit(1);
 }
+
