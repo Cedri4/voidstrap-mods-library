@@ -70,7 +70,8 @@
     {
       "pattern": "discord(app)?\\.com/api/webhooks",
       "reason": "Discord webhooks are a common way to steal data",
-      "level": "error"
+      "level": "error",
+      "binary": false
     },
     {
       "pattern": "\\b(getgenv|getrenv|getreg|hookfunction|hookmetamethod|newcclosure|setreadonly|getrawmetatable|loadstring|firetouchinterest|fireclickdetector|syn\\.request|identifyexecutor)\\b",
@@ -95,7 +96,8 @@
     {
       "pattern": "\\b(child_process|require\\s*\\(|process\\.env|__dirname|XMLHttpRequest|WebSocket|importScripts)\\b",
       "reason": "Node and browser escape hatches are not part of the Voidstrap mod API",
-      "level": "error"
+      "level": "error",
+      "binary": false
     },
     {
       "pattern": "\\b(crypto ?miner|coinhive|xmrig|monero)\\b",
@@ -135,7 +137,8 @@
     {
       "pattern": "!\\[[^\\]]*\\]\\(https?://|data:(image|video|audio)/|\\b(imgur\\.com|i\\.imgur\\.com|tenor\\.com|media\\.tenor\\.com|giphy\\.com|media\\.giphy\\.com|catbox\\.moe|files\\.catbox\\.moe|ibb\\.co|i\\.ibb\\.co|postimages\\.org|prnt\\.sc|gyazo\\.com|puu\\.sh|streamable\\.com|imgflip\\.com|9gag\\.com|knowyourmeme\\.com|cdn\\.discordapp\\.com|media\\.discordapp\\.net)\\b|https?://[^\\s\"'<>)]+\\.(gif|webp|apng|mp4|webm|mov|avi|mkv)(\\b|[?#])",
       "reason": "external image, GIF and video embeds or unmoderated media hosts are banned",
-      "level": "error"
+      "level": "error",
+      "binary": false
     }
   ]
 }

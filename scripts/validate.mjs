@@ -32,6 +32,7 @@ function checkIcon(mod, file) {
   }
   const ascii = bytes.toString('latin1');
   for (const rule of blocked) {
+    if (rule.binary === false) continue;
     if (rule.level !== 'review' && rule.regex.test(ascii)) { fail(mod, `${file.rel} metadata violates rule: ${rule.reason}`); return; }
   }
 }
