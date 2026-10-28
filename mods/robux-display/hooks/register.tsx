@@ -189,7 +189,6 @@ export const register: Register = (on) => {
           min={0}
           max={999999999}
           step={100}
-          disabled={!isFake}
           onChange={(value) => persistFakeAmount($, value)}
         />
 
