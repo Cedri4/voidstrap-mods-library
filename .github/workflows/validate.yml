@@ -23,8 +23,8 @@ jobs:
       - name: Use the maintainer copy of the checks
         if: github.event_name == 'pull_request'
         run: |
-          git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
-          git checkout "${{ github.event.pull_request.base.sha }}" -- scripts allowed-hosts.json types package.json package-lock.json
+          git fetch --no-tags --depth=1 origin main
+          git checkout origin/main -- scripts allowed-hosts.json types package.json package-lock.json
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
