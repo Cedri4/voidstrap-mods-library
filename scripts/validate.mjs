@@ -155,9 +155,18 @@ for (const mod of mods) {
 
 if (errors.length === 0) {
   try {
-    execFileSync(process.env.VOIDSTRAP_MEDIA_PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), [path.join(ROOT, 'scripts', 'media-check.py'), ...mods], { cwd: ROOT, stdio: 'inherit', timeout: 300000 });
-  } catch {
-    fail('media', 'local media checking failed or is unavailable; install scripts/media-requirements.txt and retry');
+    execFileSync(process.env.VOIDSTRAP_MEDIA_PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), [path.join(ROOT, 'scripts', 'media-check.py'), ...mods], { cwd: ROOT, stdio: ['inherit', 'inherit', 'pipe'], encoding: 'utf8', timeout: 300000 });
+  } catch (err) {
+    const stderr = (err.stderr ?? '').toString();
+    if (stderr.trim()) {
+      process.stderr.write(stderr);
+    }
+    const match = stderr.match(/Media rejected: ([^\r\n]+)/);
+    if (match) {
+      fail('media', `sexual content detected in ${match[1]}. If this is a safe icon or image and was flagged as a false positive, try adjusting the image colors or contrast, or ask the maintainer to review it.`);
+    } else {
+      fail('media', 'local media checking failed or is unavailable; install scripts/media-requirements.txt and retry');
+    }
   }
 }
 

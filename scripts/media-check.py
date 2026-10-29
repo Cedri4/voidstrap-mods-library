@@ -78,7 +78,7 @@ class ContentChecker:
                 raise ValueError("Content checker returned an invalid result")
             probabilities = np.exp(logits - logits.max())
             score = float(probabilities[0] / probabilities.sum())
-            if score >= 0.25:
+            if score >= 0.40:
                 raise ValueError("Media rejected by local sexual content checking")
             if rgba.getextrema()[3] == (255, 255):
                 break

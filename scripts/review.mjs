@@ -391,8 +391,8 @@ async function runReview() {
 
 	let manifest = {};
 	let modFiles = [];
-	let ai = { verdict: 'unsure', summary: 'Not reviewed.', risks: [], suggestions: [], reply: '', language: pickLanguage([pr.body, ...notes.map(n => n.text)]).slice(0, 5) };
 	const notes = await authorNotes(pr);
+	let ai = { verdict: 'unsure', summary: 'Not reviewed.', risks: [], suggestions: [], reply: '', language: pickLanguage([pr.body, ...notes.map(n => n.text)]).slice(0, 5) };
 	let flags = [];
 	if (mod && !removing) {
 	  modFiles = await readModFiles(pr.head.sha, mod);
